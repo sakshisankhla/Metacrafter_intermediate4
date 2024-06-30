@@ -67,7 +67,7 @@ contract DegenGamingToken {
         
         addItem("Sword", 100);
         addItem("Shield", 150);
-        addItem("Potion", 50);
+        addItem("Gun", 50);
     }
 
     function addItem(string memory _name, uint _price) public onlyOwner {
