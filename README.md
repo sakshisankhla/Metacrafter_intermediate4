@@ -1,10 +1,10 @@
-# DegenGamingToken
+# DegenToken with Food Redemption
 
-A smart contract for the Degen Gaming Token (DGT) that allows minting, burning, transferring tokens, and redeeming in-game items.
+A smart contract for the Degen Token (DGN) that allows minting, burning, transferring tokens, and redeeming in-game food items.
 
 ## Description
 
-The `DegenGamingToken` contract is an ERC20-like token specifically designed for the Degen Gaming ecosystem. Players can use DGT to buy in-game items, transfer tokens to each other, and burn tokens they no longer need. The contract includes functions to mint new tokens, transfer tokens, burn tokens, and redeem in-game items, ensuring only the owner can mint new tokens and manage items.
+The DegenToken contract is a custom ERC20-like token designed for the Degen ecosystem. The contract enables users to mint tokens, burn their tokens, transfer tokens, and redeem in-game food items using their token balance. Players can use DGN tokens to redeem food items such as pizza, burgers, and sushi. Only the owner can mint new tokens, while all users can redeem food or burn tokens they no longer need.
 
 ## Getting Started
 
@@ -28,97 +28,113 @@ The `DegenGamingToken` contract is an ERC20-like token specifically designed for
    - Copy the `DegenGamingToken` contract code and paste it into the new file.
 
 ```
-   solidity
    // SPDX-License-Identifier: MIT
-   pragma solidity >=0.8.2 <0.9.0;
+pragma solidity 0.8.20;
 
-contract DegenGamingToken {
-    string public name = "Degen Gaming Token";
-    string public symbol = "DGT";
-    uint8 public decimals = 18;
-    uint256 public totalSupply;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint);
+    function balanceOf(address account) external view returns (uint);
+    function transfer(address recipient, uint amount) external returns (bool);
     
-    address public owner;
-    mapping(address => uint) public balanceOf;
+    event Transfer(address indexed from, address indexed to, uint amount);
+}
 
-    struct Item {
-        string name;
-        uint256 price;
+contract ERC20 is IERC20 {
+    address public immutable owner;
+    uint public totalSupply;
+    mapping (address => uint) public balanceOf;
+
+    struct Food {
+        uint foodId;
+        string foodName;
+        uint foodPrice;
     }
+    
+    mapping(uint => Food) public foods;
+    uint public foodCount;
 
-    mapping(uint => Item) public items; // Item ID to item details mapping
-    uint256 public nextItemId = 1;
+    // Mapping to track redeemed foods for each user
+    mapping(address => mapping(uint => bool)) public redeemedFoods;
 
-    mapping(address => mapping(uint => uint)) public redeemedItemCount; // Player's redeemed item count
-
-    event Transfer(address indexed from, address indexed to, uint value);
-    event Mint(address indexed to, uint value);
-    event Burn(address indexed from, uint value);
-    event Redeem(address indexed from, uint itemId, uint value);
-    event ItemGranted(address indexed player, uint itemId);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can execute this");
-        _;
-    }
+    // Event to log food redemption
+    event FoodRedeemed(address indexed user, uint indexed foodId, string foodName, uint foodPrice);
 
     constructor() {
         owner = msg.sender;
-        
-        addItem("Sword", 100);
-        addItem("Shield", 150);
-        addItem("Gun", 50);
+        totalSupply = 0;
+
+        // Initialize 3 food items in the constructor
+        addFood("Pizza", 10);
+        addFood("Burger", 8);
+        addFood("Sushi", 15);
     }
 
-    function addItem(string memory _name, uint _price) public onlyOwner {
-        items[nextItemId] = Item(_name, _price);
-        nextItemId++;
+    modifier onlyOwner {
+        require(msg.sender == owner, "Only the contract owner can execute this function");
+        _;
     }
 
-    function mint(address to, uint amount) public onlyOwner {
-        require(to != address(0), "Cannot mint to zero address");
-        totalSupply += amount;
-        balanceOf[to] += amount;
-        emit Mint(to, amount);
-        emit Transfer(address(0), to, amount);
-    }
+    string public constant name = "Degen";
+    string public constant symbol = "DGN";
+    uint8 public constant decimals = 0;
 
-    function transfer(address to, uint amount) public returns (bool) {
-        require(to != address(0), "Cannot transfer to zero address");
-        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
+    function transfer(address recipient, uint amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "The balance is insufficient");
+
         balanceOf[msg.sender] -= amount;
-        balanceOf[to] += amount;
-        emit Transfer(msg.sender, to, amount);
+        balanceOf[recipient] += amount;
+
+        emit Transfer(msg.sender, recipient, amount);
         return true;
     }
 
-    function burn(uint amount) public {
-        require(balanceOf[msg.sender] >= amount, "Insufficient balance");
-        totalSupply -= amount;
+    function mint(address receiver,uint amount) external onlyOwner {
+        balanceOf[receiver] += amount;
+        totalSupply += amount;
+        emit Transfer(address(0), receiver, amount);
+    }
+
+    function burn(uint amount) external {
+        require(amount > 0, "Amount should not be zero");
+        require(balanceOf[msg.sender] >= amount, "The balance is insufficient");
         balanceOf[msg.sender] -= amount;
-        emit Burn(msg.sender, amount);
+        totalSupply -= amount;
+
         emit Transfer(msg.sender, address(0), amount);
     }
-
-    function redeem(uint itemId) public {
-        Item memory item = items[itemId];
-        require(bytes(item.name).length > 0, "Item does not exist");
-        require(balanceOf[msg.sender] >= item.price, "Insufficient balance to redeem item");
-
     
-        totalSupply -= item.price;
-        balanceOf[msg.sender] -= item.price;
-
-        redeemedItemCount[msg.sender][itemId]++;// Track redeemed item count per player
-
-        emit Redeem(msg.sender, itemId, item.price);
-        emit Burn(msg.sender, item.price);
-        emit Transfer(msg.sender, address(0), item.price);
-        emit ItemGranted(msg.sender, itemId);
+    function addFood(string memory foodName, uint256 foodPrice) public onlyOwner {
+        foodCount++;
+        Food memory newFood = Food(foodCount, foodName, foodPrice);
+        foods[foodCount] = newFood;
     }
 
-    function checkBalance(address account) public view returns (uint) {
-        return balanceOf[account];
+    function getFoods() external view returns (Food[] memory) {
+        Food[] memory allFoods = new Food[](foodCount);
+        
+        for (uint i = 1; i <= foodCount; i++) {
+            allFoods[i - 1] = foods[i];
+        }
+        
+        return allFoods;
+    }
+    
+    function redeem(uint foodId) external {
+        require(foodId > 0 && foodId <= foodCount, "Invalid food ID");
+        Food memory redeemedFood = foods[foodId];
+        
+        require(balanceOf[msg.sender] >= redeemedFood.foodPrice, "Insufficient balance to redeem");
+        require(!redeemedFoods[msg.sender][foodId], "Food already redeemed");
+
+        balanceOf[msg.sender] -= redeemedFood.foodPrice;
+        balanceOf[owner] += redeemedFood.foodPrice;
+
+        // Mark the food as redeemed for the user
+        redeemedFoods[msg.sender][foodId] = true;
+
+        emit Transfer(msg.sender, owner, redeemedFood.foodPrice);
+        emit FoodRedeemed(msg.sender, foodId, redeemedFood.foodName, redeemedFood.foodPrice);
     }
 }
 
@@ -127,31 +143,37 @@ contract DegenGamingToken {
 4.Compile the Contract:
 
 -Click on the "Solidity Compiler" tab (second tab from the top in the left sidebar).
--Ensure the compiler version is set a compatible version.
--Click the "Compile DegenGamingToken.sol" button.
+-Ensure the compiler version is set to 0.8.20.
+-Click the "Compile DegenToken.sol" button.
 
 5.Deploy the Contract:
 
--Click on the "Deploy & Run Transactions" tab (third tab from the top in the left sidebar).
--Ensure "DegenGamingToken" is selected in the "Contract" dropdown.
--Click the "Deploy" button.
+Click on the "Deploy & Run Transactions" tab (third tab from the top in the left sidebar).
+Ensure "DegenGamingToken" is selected in the "Contract" dropdown.
+Click the "Deploy" button.
 
 6.Interact with the Contract:
 
--Once deployed, the contract will appear under "Deployed Contracts" at the bottom of the "Deploy & Run Transactions" tab.
+Once deployed, the contract will appear under "Deployed Contracts" at the bottom of the "Deploy & Run Transactions" tab.
+
 You can now interact with the contract functions:
+
 mint(address to, uint256 amount): Mint new tokens to a specified address.
+
 transfer(address to, uint256 amount): Transfer tokens to another address.
+
 burn(uint256 amount): Burn your tokens.
-redeem(uint256 itemId): Redeem tokens for an in-game item.
-checkBalance(address account): Check the token balance of an address.
+
+getFoods(): View all available food items.
+
+redeem(uint256 foodId): Redeem tokens for an in-game food item.
 
 
 
 ## Help
 
--Ensure you are using the correct Solidity compiler version.
--If a function call reverts, check the parameters you are passing and ensure the conditions are met (e.g., sufficient balance for transfers and redemptions).
+Ensure you are using the correct Solidity compiler version.
+if a function call reverts, check the parameters you are passing and ensure the conditions are met (e.g., sufficient balance for transfers and redemptions).
 
 
 ## Authors
