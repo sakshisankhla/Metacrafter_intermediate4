@@ -1,17 +1,18 @@
-# DegenToken with Food Redemption
+# DegenToken with Ticket Redemption
 
-A smart contract for the Degen Token (DGN) that allows minting, burning, transferring tokens, and redeeming in-game food items.
+A smart contract for the Degen Token (DGN) that allows minting, burning, transferring tokens, and redeeming tickets.
 
 ## Description
 
-The DegenToken contract is a custom ERC20-like token designed for the Degen ecosystem. The contract enables users to mint tokens, burn their tokens, transfer tokens, and redeem in-game food items using their token balance. Players can use DGN tokens to redeem food items such as pizza, burgers, and sushi. Only the owner can mint new tokens, while all users can redeem food or burn tokens they no longer need.
+The DegenToken contract is a custom ERC20-like token designed for the Degen ecosystem. This contract enables users to mint tokens, burn their tokens, transfer tokens, and redeem tickets using their token balance. Players can use DGN tokens to redeem various tickets, each associated with a specific price. Only the owner can mint new tokens, while all users can redeem tickets or burn tokens they no longer need.
 
 ## Getting Started
 
 ### Installing
 
-1. Clone the repository or download the `DegenGamingToken.sol` file.
-2. Open the file in a Solidity-compatible development environment, such as Remix, Truffle, or Hardhat.
+Clone the repository or download the DegenToken.sol file.
+Open the file in a Solidity-compatible development environment, such as Remix, Truffle, or Hardhat.
+
 
 ### Executing program
 
@@ -29,112 +30,81 @@ The DegenToken contract is a custom ERC20-like token designed for the Degen ecos
 
 ```
    // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-interface IERC20 {
-    function totalSupply() external view returns (uint);
-    function balanceOf(address account) external view returns (uint);
-    function transfer(address recipient, uint amount) external returns (bool);
-    
-    event Transfer(address indexed from, address indexed to, uint amount);
-}
+contract DegenToken is ERC20, Ownable {
 
-contract ERC20 is IERC20 {
-    address public immutable owner;
-    uint public totalSupply;
-    mapping (address => uint) public balanceOf;
-
-    struct Food {
-        uint foodId;
-        string foodName;
-        uint foodPrice;
-    }
-    
-    mapping(uint => Food) public foods;
-    uint public foodCount;
-
-    // Mapping to track redeemed foods for each user
-    mapping(address => mapping(uint => bool)) public redeemedFoods;
-
-    // Event to log food redemption
-    event FoodRedeemed(address indexed user, uint indexed foodId, string foodName, uint foodPrice);
-
-    constructor() {
-        owner = msg.sender;
-        totalSupply = 0;
-
-        // Initialize 3 food items in the constructor
-        addFood("Pizza", 10);
-        addFood("Burger", 8);
-        addFood("Sushi", 15);
+    struct Ticket {
+        uint ticketId;
+        string ticketName;
+        uint ticketPrice;
     }
 
-    modifier onlyOwner {
-        require(msg.sender == owner, "Only the contract owner can execute this function");
-        _;
+    mapping(uint => Ticket) public tickets;
+    uint public ticketCount;
+
+    // Mapping to track redeemed tickets for each user
+    mapping(address => mapping(uint => bool)) public redeemedTickets;
+
+    // Event to log ticket redemption
+    event RedeemToken(address account, uint ticketId);
+    event BurnToken(address account, uint amount);
+    event TicketRedeemed(address indexed user, uint indexed ticketId, string ticketName, uint ticketPrice);
+
+    constructor() ERC20("Degen", "DGN") Ownable(msg.sender) {
+        // The Ownable constructor is initialized automatically, setting msg.sender as the owner
     }
 
-    string public constant name = "Degen";
-    string public constant symbol = "DGN";
-    uint8 public constant decimals = 0;
-
-    function transfer(address recipient, uint amount) external returns (bool) {
-        require(balanceOf[msg.sender] >= amount, "The balance is insufficient");
-
-        balanceOf[msg.sender] -= amount;
-        balanceOf[recipient] += amount;
-
-        emit Transfer(msg.sender, recipient, amount);
-        return true;
+    function mint(address receiver, uint amount) public onlyOwner {
+        _mint(receiver, amount);
     }
 
-    function mint(address receiver,uint amount) external onlyOwner {
-        balanceOf[receiver] += amount;
-        totalSupply += amount;
-        emit Transfer(address(0), receiver, amount);
+    function burn(uint amount) public {
+        _burn(msg.sender, amount);
+        emit BurnToken(msg.sender, amount);
     }
 
-    function burn(uint amount) external {
-        require(amount > 0, "Amount should not be zero");
-        require(balanceOf[msg.sender] >= amount, "The balance is insufficient");
-        balanceOf[msg.sender] -= amount;
-        totalSupply -= amount;
-
-        emit Transfer(msg.sender, address(0), amount);
-    }
-    
-    function addFood(string memory foodName, uint256 foodPrice) public onlyOwner {
-        foodCount++;
-        Food memory newFood = Food(foodCount, foodName, foodPrice);
-        foods[foodCount] = newFood;
+    // Add a new ticket with a name and price
+    function addTicket(string memory ticketName, uint ticketPrice) public onlyOwner {
+        ticketCount++;
+        Ticket memory newTicket = Ticket(ticketCount, ticketName, ticketPrice);
+        tickets[ticketCount] = newTicket;
     }
 
-    function getFoods() external view returns (Food[] memory) {
-        Food[] memory allFoods = new Food[](foodCount);
-        
-        for (uint i = 1; i <= foodCount; i++) {
-            allFoods[i - 1] = foods[i];
+    // Get a list of all tickets
+    function getTickets() external view returns (Ticket[] memory) {
+        Ticket[] memory allTickets = new Ticket[](ticketCount);
+
+        for (uint i = 1; i <= ticketCount; i++) {
+            allTickets[i - 1] = tickets[i];
         }
-        
-        return allFoods;
+
+        return allTickets;
     }
-    
-    function redeem(uint foodId) external {
-        require(foodId > 0 && foodId <= foodCount, "Invalid food ID");
-        Food memory redeemedFood = foods[foodId];
-        
-        require(balanceOf[msg.sender] >= redeemedFood.foodPrice, "Insufficient balance to redeem");
-        require(!redeemedFoods[msg.sender][foodId], "Food already redeemed");
 
-        balanceOf[msg.sender] -= redeemedFood.foodPrice;
-        balanceOf[owner] += redeemedFood.foodPrice;
+    // Redeem a ticket by its ID
+    function redeem(uint ticketId) public {
+        require(ticketId > 0 && ticketId <= ticketCount, "Invalid ticket ID");
+        Ticket memory ticket = tickets[ticketId];
+        require(balanceOf(msg.sender) >= ticket.ticketPrice, "Insufficient balance to redeem this ticket");
+        require(!redeemedTickets[msg.sender][ticketId], "Ticket already redeemed");
 
-        // Mark the food as redeemed for the user
-        redeemedFoods[msg.sender][foodId] = true;
+        // Burn the required tokens
+        burn(ticket.ticketPrice);
 
-        emit Transfer(msg.sender, owner, redeemedFood.foodPrice);
-        emit FoodRedeemed(msg.sender, foodId, redeemedFood.foodName, redeemedFood.foodPrice);
+        // Mark the ticket as redeemed for the user
+        redeemedTickets[msg.sender][ticketId] = true;
+
+        emit TicketRedeemed(msg.sender, ticketId, ticket.ticketName, ticket.ticketPrice);
+        emit RedeemToken(msg.sender, ticketId);
+    }
+
+    // Check if a ticket has been redeemed by a specific user
+    function isTicketRedeemed(address user, uint ticketId) external view returns (bool) {
+        return redeemedTickets[user][ticketId];
     }
 }
 
@@ -160,13 +130,15 @@ You can now interact with the contract functions:
 
 mint(address to, uint256 amount): Mint new tokens to a specified address.
 
-transfer(address to, uint256 amount): Transfer tokens to another address.
-
 burn(uint256 amount): Burn your tokens.
 
-getFoods(): View all available food items.
+addTicket(string memory ticketName, uint ticketPrice): Add a new ticket.
 
-redeem(uint256 foodId): Redeem tokens for an in-game food item.
+getTickets(): View all available tickets.
+
+redeem(uint256 ticketId): Redeem tokens for a ticket.
+
+isTicketRedeemed(address user, uint256 ticketId): Check if a specific user has redeemed a ticket.
 
 
 
